@@ -1,55 +1,59 @@
 package eulumies
 
+// Reference: http://www.helios32.com/Eulumdat.htm
+// Reference: https://docs.agi32.com/PhotometricToolbox/Content/Open_Tool/eulumdat_file_format.htm
+
 import (
 	"bufio"
 	"errors"
 	"fmt"
-	"log"
 	"os"
 	"strconv"
-	"strings"
 )
 
+// EULUMDAT data structure
 type Eulumdat struct {
-	/* 01 */ CompanyIdentification      string // 78 char - Company identification/data bank/version/format identification max.
-	/* 02 */ TypeIndicator              int // 1  int  - Type indicator I_typ (1 - point source with symmetry about the vertical axis; 2 - linear luminaire; 3 - point source with any other symmetry) [See Note 1]
-	/* 03 */ SymmetryIndicator          int // 1  int  - Symmetry indicator I_sym (0 - no symmetry; 1 - symmetry about the vertical axis; 2- symmetry to plane C0-C180; 3- symmetry to plane C90-C270; 4- symmetry to plane C0-C180 and to plane C90-C270)
-	/* 04 */ NumberMcCPlanes            int // 2  int  - Number M_c of C-planes between 0 and 360 degrees (usually 24 for interior, 36 for road lighting luminaires)
-	/* 05 */ DistanceDcCPlanes          float64 // 5  dbl  - Angular-Distance Dc between C-planes (D_c = 0 for non-equidistantly available C-planes)
-	/* 06 */ NumberNgIntensitiesCPlane  int // 2  int  - Number N_g of luminous intensities in each C-plane (usually 19 or 37)
-	/* 07 */ DistanceDgCPlane           float64 // 5  dbl  - Angular-Distance D_g between luminous intensities per C-plane (D_g = 0 for non-equidistantly available luminous intensities in C-planes)
-	/* 08 */ MeasurementReportNumber    string // 78 char - Measurement report number
-	/* 09 */ LuminaireName              string // 78 char - Luminaire name
-	/* 10 */ LuminaireNumber            string // 78 char - Luminaire number
-	/* 11 */ FileName                   string // 8  char - File name (DOS)
-	/* 12 */ DateUser                   string // 78 char - Date / User
-	/* 13 */ LengthDiameter             float64 // 4  dbl  - Length / diameter of luminaire (mm)
-	/* 14 */ WidthLuminaire             float64 // 4  dbl  - Width of luminaire b (mm) (b = 0 for circular luminaire)
-	/* 15 */ HeightLuminaire            float64 // 4  dbl  - Height of luminaire (mm)
+	/* 01 */ CompanyIdentification string // 78 char - Company identification/data bank/version/format identification max.
+	/* 02 */ TypeIndicator int // 1  int  - Type indicator I_typ (1 - point source with symmetry about the vertical axis; 2 - linear luminaire; 3 - point source with any other symmetry) [See Note 1]
+	/* 03 */ SymmetryIndicator int // 1  int  - Symmetry indicator I_sym (0 - no symmetry; 1 - symmetry about the vertical axis; 2- symmetry to plane C0-C180; 3- symmetry to plane C90-C270; 4- symmetry to plane C0-C180 and to plane C90-C270)
+	/* 04 */ NumberMcCPlanes int // 2  int  - Number M_c of C-planes between 0 and 360 degrees (usually 24 for interior, 36 for road lighting luminaires)
+	/* 05 */ DistanceDcCPlanes float64 // 5  dbl  - Angular-Distance Dc between C-planes (D_c = 0 for non-equidistantly available C-planes)
+	/* 06 */ NumberNgIntensitiesCPlane int // 2  int  - Number N_g of luminous intensities in each C-plane (usually 19 or 37)
+	/* 07 */ DistanceDgCPlane float64 // 5  dbl  - Angular-Distance D_g between luminous intensities per C-plane (D_g = 0 for non-equidistantly available luminous intensities in C-planes)
+	/* 08 */ MeasurementReportNumber string // 78 char - Measurement report number
+	/* 09 */ LuminaireName string // 78 char - Luminaire name
+	/* 10 */ LuminaireNumber string // 78 char - Luminaire number
+	/* 11 */ FileName string // 8  char - File name (DOS)
+	/* 12 */ DateUser string // 78 char - Date / User
+	/* 13 */ LengthDiameter float64 // 4  dbl  - Length / diameter of luminaire (mm)
+	/* 14 */ WidthLuminaire float64 // 4  dbl  - Width of luminaire b (mm) (b = 0 for circular luminaire)
+	/* 15 */ HeightLuminaire float64 // 4  dbl  - Height of luminaire (mm)
 	/* 16 */ LengthDiameterLuminousArea float64 // 4  dbl  - Length / diameter of luminous area (mm)
-	/* 17 */ WidthLuminousArea          float64 // 4  dbl  - Width of luminous area b1 (mm) (b1 = 0 for circular luminous area of luminaire)
-	/* 18 */ HeightLuminousAreaC0       float64 // 4  dbl  - Height of luminous area C0-plane (mm)
-	/* 19 */ HeightLuminousAreaC90      float64 // 4  dbl  - Height of luminous area C90-plane (mm)
-	/* 20 */ HeightLuminousAreaC180     float64 // 4  dbl  - Height of luminous area C180-plane (mm)
-	/* 21 */ HeightLuminousAreaC270     float64 // 4  dbl  - Height of luminous area C270-plane (mm)
-	/* 22 */ DownwardFluxFractionPhiu   float64 // 4  dbl  - Downward flux fraction DFF Phi_u (%)
-	/* 23 */ LightOutputRatioLuminaire  float64 // 4  dbl  - Light output ratio luminaire LORL, luminair efficiency (%)
-	/* 24 */ IntensityConversionFactor  float64 // 6  dbl  - Conversion factor for luminous intensities (depending on measurement)
-	/* 25 */ MeasurementTiltLuminaire   float64 // 6  dbl  - Tilt of luminaire during measurement (road lighting luminaires)
-	/* 26 */ NumberStandardSetLamps     int // 4  int  - Number n of standard sets of lamps (optional, also extendable on company-specific basis)
+	/* 17 */ WidthLuminousArea float64 // 4  dbl  - Width of luminous area b1 (mm) (b1 = 0 for circular luminous area of luminaire)
+	/* 18 */ HeightLuminousAreaC0 float64 // 4  dbl  - Height of luminous area C0-plane (mm)
+	/* 19 */ HeightLuminousAreaC90 float64 // 4  dbl  - Height of luminous area C90-plane (mm)
+	/* 20 */ HeightLuminousAreaC180 float64 // 4  dbl  - Height of luminous area C180-plane (mm)
+	/* 21 */ HeightLuminousAreaC270 float64 // 4  dbl  - Height of luminous area C270-plane (mm)
+	/* 22 */ DownwardFluxFractionPhiu float64 // 4  dbl  - Downward flux fraction DFF Phi_u (%)
+	/* 23 */ LightOutputRatioLuminaire float64 // 4  dbl  - Light output ratio luminaire LORL, luminair efficiency (%)
+	/* 24 */ IntensityConversionFactor float64 // 6  dbl  - Conversion factor for luminous intensities (depending on measurement)
+	/* 25 */ MeasurementTiltLuminaire float64 // 6  dbl  - Tilt of luminaire during measurement (road lighting luminaires)
+	/* 26 */ NumberStandardSetLamps int // 4  int  - Number n of standard sets of lamps (optional, also extendable on company-specific basis)
 
-	/* 26a */ NumberLamps            []int // n * 4   - Number of lamps
-	/* 26b */ TypeLamps              []string // n * 24  - Type of lamps
+	/* 26a */
+	NumberLamps []int // n * 4   - Number of lamps
+	/* 26b */ TypeLamps []string // n * 24  - Type of lamps
 	/* 26c */ TotalLuminousFluxLamps []float64 // n * 12  - Total luminous flux of lamps (lumens)
-	/* 26d */ ColorTemperature       []string // n * 16  - Color appearance / color temperature of lamps
+	/* 26d */ ColorTemperature []string // n * 16  - Color appearance / color temperature of lamps
 	/* 26e */ ColorRenderingIndexCRI []string // n * 6   - Color rendering group / color rendering index
-	/* 26f */ BallastWatts           []float64 // n * 8   - Wattage including ballast (watts)
+	/* 26f */ BallastWatts []float64 // n * 8   - Wattage including ballast (watts)
 
-	/* 27 */ DirectRatios                     [10]float64 //  10 * 7   - Direct ratios DR for room indices k = 0.6 ... 5 (for determination of luminaire numbers according to utilization factor method)
-	/* 28 */ AnglesC                          []float64 //  M_c * 6  - Angles C (beginning with 0 degrees)
-	/* 29 */ AnglesG                          []float64 //  N_g * 6  - Angles G (beginning with 0 degrees)
+	/* 27 */
+	DirectRatios [10]float64 //  10 * 7   - Direct ratios DR for room indices k = 0.6 ... 5 (for determination of luminaire numbers according to utilization factor method)
+	/* 28 */ AnglesC []float64 //  M_c * 6  - Angles C (beginning with 0 degrees)
+	/* 29 */ AnglesG []float64 //  N_g * 6  - Angles G (beginning with 0 degrees)
 	/* 30 */ LuminousIntensityDistributionRaw []float64 // (M_c2-M_c1+1) * N_g * 6 -  Luminous intensity distribution (candela / 1000 lumens)
-	/* 30~ */ LuminousIntensityDistribution   [][]float64 // same as raw, but already divided into planes
+	/* 30~ */ LuminousIntensityDistribution [][]float64 // same as raw, but already divided into planes
 	/* 30 Hints:
 	 *
 	 * I_sym    M_c1         M_c2
@@ -66,6 +70,7 @@ type Eulumdat struct {
 	mc  int
 }
 
+// NewEulumdat reads the given input file and parses it to the Eulumdat data structure.
 func NewEulumdat(filepath string, strict bool) (*Eulumdat, error) {
 	file, err := os.Open(filepath)
 	if err != nil {
@@ -218,17 +223,8 @@ func NewEulumdat(filepath string, strict bool) (*Eulumdat, error) {
 
 	// Split luminous intensities into planes
 	// Details can be found in QLumEdit Source (eulumdat.cpp, line 234)
-	eulumdat.calcMc()
-	eulumdat.LuminousIntensityDistribution = make([][]float64, eulumdat.mc)
-	for i := 0; i < eulumdat.mc; i++ { // C-Planes
-		start := i * eulumdat.NumberNgIntensitiesCPlane
-		end := start + eulumdat.NumberNgIntensitiesCPlane
-
-		length := end - start
-		eulumdat.LuminousIntensityDistribution[i] = make([]float64, length)
-		for j := 0; j < length; j++ {
-			eulumdat.LuminousIntensityDistribution[i][j] = eulumdat.LuminousIntensityDistributionRaw[start+j]
-		}
+	if err = eulumdat.CalcLuminousIntensityDistributionFromRaw(); err != nil {
+		return nil, err
 	}
 
 	if err := scanner.Err(); err != nil {
@@ -238,6 +234,7 @@ func NewEulumdat(filepath string, strict bool) (*Eulumdat, error) {
 	return &eulumdat, nil
 }
 
+// CopyEulumdat creates a deep copy of the given Eulumdat instance.
 func CopyEulumdat(source *Eulumdat) (*Eulumdat, error) {
 	copyObject := *source
 
@@ -260,7 +257,12 @@ func CopyEulumdat(source *Eulumdat) (*Eulumdat, error) {
 	return &copyObject, nil
 }
 
+// Export writes the Eulumdat instance to a file.
 func (e *Eulumdat) Export(filepath string) error {
+	if ok, msg := e.Validate(false); !ok {
+		return errors.New(msg)
+	}
+
 	file, err := os.Create(filepath)
 	if err != nil {
 		return err
@@ -405,71 +407,6 @@ func (e *Eulumdat) Export(filepath string) error {
 	return nil
 }
 
-func validateStringFromLine(scanner *bufio.Scanner, maxLength int, strict bool) (string, error) {
-	if !scanner.Scan() {
-		if err := scanner.Err(); err != nil {
-			return "", err
-		} else {
-			return "", errors.New("unexpected EOF")
-		}
-	}
-	cleanLine := strings.TrimSpace(scanner.Text())
-	if len(cleanLine) > maxLength && strict {
-		return "", errors.New("line exceeds maximum allowed length: " + cleanLine)
-	} else if len(cleanLine) > maxLength && !strict {
-		log.Printf("[W] line exceeds maximum allowed length: %d > %d, %s", len(cleanLine), maxLength, cleanLine)
-	}
-	return cleanLine, nil
-}
-
-func validateIntFromLine(scanner *bufio.Scanner) (int, error) {
-	if !scanner.Scan() {
-		if err := scanner.Err(); err != nil {
-			return -1, err
-		} else {
-			return -1, errors.New("unexpected EOF")
-		}
-	}
-
-	cleanLine := strings.TrimSpace(scanner.Text())
-	// also replace spaces and underscores
-	cleanLine = strings.ReplaceAll(cleanLine, " ", "")
-	cleanLine = strings.ReplaceAll(cleanLine, "_", "")
-
-	if len(cleanLine) == 0 {
-		return -1, errors.New("line contains no integer")
-	}
-
-	value, err := strconv.Atoi(cleanLine)
-
-	return value, err
-}
-
-func validateFloatFromLine(scanner *bufio.Scanner) (float64, error) {
-	if !scanner.Scan() {
-		if err := scanner.Err(); err != nil {
-			return -1, err
-		} else {
-			return -1, errors.New("unexpected EOF")
-		}
-	}
-
-	cleanLine := strings.TrimSpace(scanner.Text())
-	// replace all commas if present with dots
-	cleanLine = strings.ReplaceAll(cleanLine, ",", ".")
-	// also replace spaces and underscores
-	cleanLine = strings.ReplaceAll(cleanLine, " ", "")
-	cleanLine = strings.ReplaceAll(cleanLine, "_", "")
-
-	if len(cleanLine) == 0 {
-		return -1, errors.New("line contains no float")
-	}
-
-	value, err := strconv.ParseFloat(cleanLine, 64)
-
-	return value, err
-}
-
 // Calculate the value of Mc1 and Mc2 based on the symmetry indicator.
 //      I_sym    M_c1         M_c2
 //      0        1            M_c
@@ -512,4 +449,62 @@ func (e *Eulumdat) calcMc() {
 	case 4:
 		e.mc = e.NumberMcCPlanes/4 + 1
 	}
+}
+
+// CalcLuminousIntensityDistributionFromRaw splits luminous intensities into planes
+func (e *Eulumdat) CalcLuminousIntensityDistributionFromRaw() error {
+	e.calcMc()
+	e.LuminousIntensityDistribution = make([][]float64, e.mc)
+	for i := 0; i < e.mc; i++ { // C-Planes
+		start := i * e.NumberNgIntensitiesCPlane
+		end := start + e.NumberNgIntensitiesCPlane
+
+		length := end - start
+		e.LuminousIntensityDistribution[i] = make([]float64, length)
+		for j := 0; j < length; j++ {
+			e.LuminousIntensityDistribution[i][j] = e.LuminousIntensityDistributionRaw[start+j]
+		}
+	}
+
+	return nil
+}
+
+// Validate the EULUMDAT Data structure
+func (e *Eulumdat) Validate(strict bool) (bool, string) {
+	if strict {
+		// TODO: length checks on all fields
+	}
+
+	if e.NumberStandardSetLamps != len(e.NumberLamps) {
+		return false, "NumberLamps length mismatch"
+	}
+	if e.NumberStandardSetLamps != len(e.TypeLamps) {
+		return false, "TypeLamps length mismatch"
+	}
+	if e.NumberStandardSetLamps != len(e.TotalLuminousFluxLamps) {
+		return false, "TotalLuminousFluxLamps length mismatch"
+	}
+	if e.NumberStandardSetLamps != len(e.ColorTemperature) {
+		return false, "ColorTemperature length mismatch"
+	}
+	if e.NumberStandardSetLamps != len(e.ColorRenderingIndexCRI) {
+		return false, "ColorRenderingIndexCRI length mismatch"
+	}
+	if e.NumberStandardSetLamps != len(e.BallastWatts) {
+		return false, "BallastWatts length mismatch"
+	}
+	if e.NumberMcCPlanes != len(e.AnglesC) {
+		return false, "AnglesC length mismatch"
+	}
+	if e.NumberNgIntensitiesCPlane != len(e.AnglesG) {
+		return false, "AnglesG length mismatch"
+	}
+
+	e.calcMc1andMc2()
+	dataLength := (e.mc2 - e.mc1 + 1) * e.NumberNgIntensitiesCPlane
+	if dataLength != len(e.LuminousIntensityDistributionRaw) {
+		return false, "LuminousIntensityDistributionRaw length mismatch"
+	}
+
+	return true, ""
 }

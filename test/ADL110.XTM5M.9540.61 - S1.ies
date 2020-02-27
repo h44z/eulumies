@@ -1,0 +1,26 @@
+IESNA:LM-63-2002
+[TEST] LightLab International LL20078-S1
+[MANUFAC] Efficient Lighting Systems,
+[MORE] Brunswick. VIC. 3056.
+[LUMINAIRE] Efficient Lighting Systems Recessed LED Downlight. Product ID:  ADL110.XTM5M.9540.61
+[MORE] White plastic fascia and neutral metal frame with black finned heatsink, extent ~ 111 mm dia x 125 mm
+[MORE] deep. Faceted textured reflector about LED. Luminous opening of 85 mm diameter.
+[MORE] One Xicato "XTM19 9540 2000LM" LED centred 55 mm above L/O.
+[MORE] Remote Cool LED CLK1000S-240-C 220-240V 50/60Hz electronic driver.
+[MORE] Tested at 240 V 50 Hz.
+[OTHER] Absolute test - lamp lumens value set to -1
+[MORE] NA conventions used for C0 plane alignment and C-plane rotation direction.
+[MORE] The sample was tested at a distance of 8m.
+[MORE] This IES file created by LightLab/LSA Report program version 3.803a.
+[ISSUEDATE] This file created: Tuesday, 18 April 2017 5:04:30 PM
+[TESTLAB] LightLab International
+[LUMCAT] ADL110.XTM5M.9540.61
+TILT=NONE
+1 -1 0.526 91 1 1 2 -0.085 -0.085 0
+1 1 11.5
+0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 58 59 60 61 62 63 64 65 66 67 68 69 70 71 72 73 74 75 76 77 78 79 80 81 82 83 84 85 86 87 
+88 89 90
+0
+3073.59 3068.16 3049.03 3011.98 2966.07 2904.88 2825.28 2741.53 2644.15 2552.59 2453.45 2337.91 2231.72 2124.34 2011.94 1909.05 1805.75 1711.26 1626.22 1532.28 1455.34 1384.91 1316.75 1262.18 1209.34 1163.15 1118.99 1073.21 1035.15 999.99 962.24 929.35 
+894.75 863.27 812.82 736.30 655.00 571.67 475.07 392.50 301.59 223.52 162.41 110.55 86.26 76.80 67.56 56.19 35.96 32.26 28.94 25.80 23.52 21.29 19.14 17.38 15.76 14.25 13.04 11.76 10.77 9.61 8.93 8.14 7.03 6.64 6.27 5.49 5.02 4.58 4.13 3.80 3.40 3.01 2.94
+ 2.43 2.10 2.05 1.70 1.54 1.17 1.24 0.85 0.62 0.55 0.42 0.25 0.17 0.19 0.13 0.00
