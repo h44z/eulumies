@@ -2,9 +2,12 @@ package eulumies
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"os"
 	"regexp"
+	"strconv"
+	"strings"
 )
 
 // Reference: https://knowledge.autodesk.com/support/3ds-max/learn-explore/caas/CloudHelp/cloudhelp/2015/ENU/3DSMax/files/GUID-EA0E3DE0-275C-42F7-83EC-429A37B2D501-htm.html
@@ -29,8 +32,9 @@ const (
 )
 
 var (
-	keywordRegex = regexp.MustCompile(`^(\[\w*\])\s+(.*)$`)
-	tiltRegex    = regexp.MustCompile(`^TILT\s*=\s*(.*)$`)
+	keywordRegex      = regexp.MustCompile(`^\[(_*\w*)\]\s+(.*)$`)
+	keywordExtraRegex = regexp.MustCompile(`^\s+(.*)$`)
+	tiltRegex         = regexp.MustCompile(`^TILT\s*=\s*(.*)$`)
 )
 
 // IESNA LM-63 data structure
@@ -64,7 +68,8 @@ type IES struct {
 	lastKeyword string
 }
 
-func NewIES(filepath string) (*IES, error) {
+// NewIES reads the given input file and parses it to the IESNA LM-63 data structure.
+func NewIES(filepath string, strict bool) (*IES, error) {
 	file, err := os.Open(filepath)
 	if err != nil {
 		return nil, err
@@ -92,6 +97,7 @@ func NewIES(filepath string) (*IES, error) {
 
 	// Parse keywords and tilt information.
 	tiltReached := false
+	ies.Keywords = make(map[string]string)
 	for !tiltReached {
 		if isKeywordLine(line) {
 			if err = ies.parseKeywordLine(line); err != nil {
@@ -106,6 +112,10 @@ func NewIES(filepath string) (*IES, error) {
 			if err = ies.parseTiltLine(line); err != nil {
 				return nil, err
 			}
+		} else if isKeywordExtraLine(line) {
+			if err = ies.parseKeywordExtraLine(line); err != nil {
+				return nil, err
+			}
 		} else {
 			return nil, fmt.Errorf("expected keyword or tilt line, not %s", line)
 		}
@@ -116,8 +126,123 @@ func NewIES(filepath string) (*IES, error) {
 		}
 	}
 
-	// Parse main luminaire values.
-	// TODO: implement
+	// Parse tilt values.
+	if ies.Tilt == IESTiltInclude {
+		if ies.TiltLampToLuminaireGeometry, err = getIntFromLine(line); err != nil {
+			return nil, err
+		}
+		line, err = ies.fetchValidLineFromFile(scanner)
+		if err != nil {
+			return nil, err
+		}
+		if ies.TiltAnglesAndFactors, err = getIntFromLine(line); err != nil {
+			return nil, err
+		}
+
+		if words, err := getWordListFromInput(scanner, ies.TiltAnglesAndFactors, false); err != nil {
+			return nil, err
+		} else {
+			if ies.TiltAngles, err = convertStringSliceToFloat(words); err != nil {
+				return nil, err
+			}
+		}
+		if words, err := getWordListFromInput(scanner, ies.TiltAnglesAndFactors, false); err != nil {
+			return nil, err
+		} else {
+			if ies.TiltMultiplierFactors, err = convertStringSliceToFloat(words); err != nil {
+				return nil, err
+			}
+		}
+
+	}
+
+	// Parse line 10.
+	if words, err := getWordListFromInput(scanner, 10, false); err != nil {
+		return nil, err
+	} else {
+		if ies.NumberLamps, err = strconv.Atoi(words[0]); err != nil {
+			return nil, err
+		}
+		if ies.LumensPerLamp, err = strconv.ParseFloat(words[1], 64); err != nil {
+			return nil, err
+		}
+		if ies.CandelaMultiplier, err = strconv.ParseFloat(words[2], 64); err != nil {
+			return nil, err
+		}
+		if ies.NumberVerticalAngles, err = strconv.Atoi(words[3]); err != nil {
+			return nil, err
+		}
+		if ies.NumberHorizontalAngles, err = strconv.Atoi(words[4]); err != nil {
+			return nil, err
+		}
+		if ies.PhotometricType, err = strconv.Atoi(words[5]); err != nil {
+			return nil, err
+		}
+		if ies.UnitsType, err = strconv.Atoi(words[6]); err != nil {
+			return nil, err
+		}
+		if ies.LuminaireWidth, err = strconv.ParseFloat(words[7], 64); err != nil {
+			return nil, err
+		}
+		if ies.LuminaireLength, err = strconv.ParseFloat(words[8], 64); err != nil {
+			return nil, err
+		}
+		if ies.LuminaireHeight, err = strconv.ParseFloat(words[9], 64); err != nil {
+			return nil, err
+		}
+	}
+
+	// Parse line 11.
+	if words, err := getWordListFromInput(scanner, 3, false); err != nil {
+		return nil, err
+	} else {
+		if ies.BallastFactor, err = strconv.ParseFloat(words[1], 64); err != nil {
+			return nil, err
+		}
+		if ies.FutureUse, err = strconv.ParseFloat(words[1], 64); err != nil {
+			return nil, err
+		}
+		if ies.InputWatts, err = strconv.ParseFloat(words[2], 64); err != nil {
+			return nil, err
+		}
+	}
+
+	// Parse vertical angles.
+	if words, err := getWordListFromInput(scanner, ies.NumberVerticalAngles, false); err != nil {
+		return nil, err
+	} else {
+		if ies.VerticalAngles, err = convertStringSliceToFloat(words); err != nil {
+			return nil, err
+		}
+	}
+
+	// Parse horizontal angles.
+	if words, err := getWordListFromInput(scanner, ies.NumberHorizontalAngles, false); err != nil {
+		return nil, err
+	} else {
+		if ies.HorizontalAngles, err = convertStringSliceToFloat(words); err != nil {
+			return nil, err
+		}
+	}
+
+	// Parse candela values.
+	if words, err := getWordListFromInput(scanner, ies.NumberVerticalAngles*ies.NumberHorizontalAngles, true); err != nil {
+		return nil, err
+	} else {
+		if candelaValues, err := convertStringSliceToFloat(words); err != nil {
+			return nil, err
+		} else {
+			c := 0
+			ies.CandelaValues = make([][]float64, ies.NumberHorizontalAngles)
+			for i := 0; i < ies.NumberHorizontalAngles; i++ {
+				ies.CandelaValues[i] = make([]float64, ies.NumberVerticalAngles)
+				for j := 0; j < ies.NumberVerticalAngles; j++ {
+					ies.CandelaValues[i][j] = candelaValues[c]
+					c++
+				}
+			}
+		}
+	}
 
 	if err := scanner.Err(); err != nil {
 		return nil, err
@@ -298,6 +423,11 @@ func isKeywordLine(line string) bool {
 	return keywordRegex.MatchString(line)
 }
 
+func isKeywordExtraLine(line string) bool {
+	// TODO: is this allowed in every standard?
+	return keywordExtraRegex.MatchString(line)
+}
+
 func isTiltLine(line string) bool {
 	return tiltRegex.MatchString(line)
 }
@@ -327,6 +457,19 @@ func (i *IES) parseKeywordLine(line string) error {
 		i.Keywords[keyword] = value
 		i.lastKeyword = keyword
 	}
+
+	return nil
+}
+
+func (i *IES) parseKeywordExtraLine(line string) error {
+	matches := keywordExtraRegex.FindStringSubmatch(line)
+	value := matches[1]
+
+	if len(i.Keywords) == 0 || i.lastKeyword == "" {
+		return fmt.Errorf("extra keyword line occured before any other keyword")
+	}
+
+	i.Keywords[i.lastKeyword] += "\n" + value
 
 	return nil
 }
@@ -366,9 +509,71 @@ func (i *IES) checkKeywordBlock(keyword string) bool {
 
 func (i *IES) fetchValidLineFromFile(scanner *bufio.Scanner) (string, error) {
 	lineLength := 256 // TODO: set according to chosen format
-	line, err := validateStringFromLine(scanner, lineLength, true)
-	if err != nil {
-		return "", err
+
+	if !scanner.Scan() {
+		if err := scanner.Err(); err != nil {
+			return "", err
+		} else {
+			return "", errors.New("unexpected EOF")
+		}
 	}
-	return line, nil
+
+	if len(scanner.Text()) > lineLength {
+		return "", errors.New("line exceeds maximum allowed length: " + scanner.Text())
+	}
+
+	return scanner.Text(), nil
+}
+
+func getIntFromLine(line string) (int, error) {
+	cleanLine := strings.TrimSpace(line)
+	// also replace spaces and underscores
+	cleanLine = strings.ReplaceAll(cleanLine, " ", "")
+	cleanLine = strings.ReplaceAll(cleanLine, "_", "")
+
+	if len(cleanLine) == 0 {
+		return -1, errors.New("line contains no integer")
+	}
+
+	value, err := strconv.Atoi(cleanLine)
+
+	return value, err
+}
+
+func convertStringSliceToFloat(input []string) ([]float64, error) {
+	list := make([]float64, len(input))
+	for i, str := range input {
+		if flt, err := strconv.ParseFloat(str, 64); err != nil {
+			return nil, err
+		} else {
+			list[i] = flt
+		}
+	}
+
+	return list, nil
+}
+
+func getWordListFromInput(scanner *bufio.Scanner, size int, lastScan bool) ([]string, error) {
+	list := make([]string, size)
+	processed := 0
+	for processed < size {
+		wordScanner := bufio.NewScanner(strings.NewReader(strings.TrimSpace(scanner.Text())))
+		wordScanner.Split(bufio.ScanWords)
+		for wordScanner.Scan() {
+			list[processed] = strings.TrimSpace(wordScanner.Text())
+			processed++
+		}
+
+		if processed < size || !lastScan {
+			if !scanner.Scan() {
+				if err := scanner.Err(); err != nil {
+					return nil, err
+				} else {
+					return nil, errors.New("unexpected EOF")
+				}
+			}
+		}
+	}
+
+	return list, nil
 }

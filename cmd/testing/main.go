@@ -16,4 +16,11 @@ func main() {
 			fmt.Println(err)
 		}
 	}
+
+	ies, err := eulumies.NewIES("test/sample.ies", false)
+	if err != nil {
+		fmt.Println("Error parsing ies:", err)
+	} else {
+		fmt.Println("Parsed ies:", ies.Keywords["LUMINAIRE"])
+	}
 }

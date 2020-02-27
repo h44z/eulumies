@@ -26,3 +26,5 @@
 .idea/
 *.iws
 out/
+test/out.ldt
+test/out.ies
