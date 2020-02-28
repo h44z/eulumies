@@ -64,8 +64,9 @@ type IES struct {
 	CandelaValues               [][]float64 // candela values for all vertical angles per	horizontal angle
 
 	// internal parser values
-	insideBlock bool
-	lastKeyword string
+	insideBlock   bool
+	lastKeyword   string
+	strictParsing bool
 }
 
 // NewIES reads the given input file and parses it to the IESNA LM-63 data structure.
@@ -77,12 +78,13 @@ func NewIES(filepath string, strict bool) (*IES, error) {
 	defer file.Close()
 
 	var ies IES
+	ies.strictParsing = strict
 	ies.Format = IESFormatUnknown
 
 	scanner := bufio.NewScanner(file)
 
 	// First load all Header fields, 1 to 26
-	line, err := validateStringFromLine(scanner, 16, true)
+	line, err := validateStringFromLine(scanner, 16, strict)
 	if err != nil {
 		return nil, err
 	}
@@ -263,7 +265,7 @@ func (i *IES) Export(filepath string) error {
 	}
 	defer file.Close()
 
-	lineLength := 256 // TODO: set according to standard
+	lineLength := i.maxKeywordLineLength()
 
 	// Format
 	if _, err = file.WriteString(i.convertFormatToString() + "\r\n"); err != nil {
@@ -274,10 +276,11 @@ func (i *IES) Export(filepath string) error {
 	for keyword, value := range i.Keywords {
 		var cleanKeywordLines []string
 		var splitValue = strings.Split(strings.Replace(value, "\r\n", "\n", -1), "\n")
+		maxLineLength := lineLength - len(keyword) - 3 // -3: [ ] and space
 		for _, val := range splitValue {
 			val = strings.TrimSpace(val)
-			if len(val) > lineLength {
-				chunkSize := lineLength
+			if len(val) > maxLineLength {
+				chunkSize := maxLineLength
 
 				for j := 0; j < len(val); j += chunkSize {
 					end := j + chunkSize
@@ -287,10 +290,18 @@ func (i *IES) Export(filepath string) error {
 					}
 
 					cleanKeywordLines = append(cleanKeywordLines, strings.TrimSpace(val[j:end]))
+
 				}
 			} else {
 
 				cleanKeywordLines = append(cleanKeywordLines, strings.TrimSpace(val))
+			}
+
+			// recalculate maxLineLength for next lines depending on the format
+			if i.Format == IESFormatLM_63_2002 {
+				maxLineLength = lineLength - 7 // [MORE] and space
+			} else {
+				maxLineLength = lineLength - 1 // space in front
 			}
 		}
 
@@ -323,6 +334,7 @@ func (i *IES) Export(filepath string) error {
 	}
 
 	// Tilt Data
+	lineLength = i.maxDataLineLength()
 	if i.Tilt == IESTiltInclude {
 		if _, err = file.WriteString(strconv.Itoa(i.TiltLampToLuminaireGeometry) + "\r\n"); err != nil {
 			return err
@@ -395,6 +407,44 @@ func (i *IES) Export(filepath string) error {
 	return nil
 }
 
+// Upgrade sets the format version of the IESNA LM-63 instance to a IESFormatLM_63_2002. It also fixes the required keywords.
+func (i *IES) Upgrade() error {
+	if ok, msg := i.Validate(true); !ok {
+		return errors.New(msg)
+	}
+
+	i.Format = IESFormatLM_63_2002
+
+	if !i.ContainsRequiredKeywords() {
+		if _, ok := i.Keywords["TEST"]; !ok {
+			i.Keywords["TEST"] = "unknown"
+		}
+		if _, ok := i.Keywords["TESTLAB"]; !ok {
+			i.Keywords["TESTLAB"] = "unknown"
+		}
+		if _, ok := i.Keywords["ISSUEDATE"]; !ok {
+			i.Keywords["ISSUEDATE"] = "unknown"
+		}
+		if _, ok := i.Keywords["MANUFAC"]; !ok {
+			i.Keywords["MANUFAC"] = "unknown"
+		}
+	}
+
+	// Convert not allowed keywords to custom keywords
+	for keyword, value := range i.Keywords {
+		if !i.isKeywordAllowed(keyword) {
+			delete(i.Keywords, keyword)
+			if keyword == "DATE" {
+				i.Keywords["ISSUEDATE"] = value
+			} else {
+				i.Keywords["_"+keyword] = value
+			}
+		}
+	}
+
+	return nil
+}
+
 // Validate the IESNA LM-63 Data structure
 func (i *IES) Validate(strict bool) (bool, string) {
 	if strict {
@@ -453,6 +503,38 @@ func (i *IES) convertFormatToString() string {
 		return "IESNA:LM-63-2002"
 	default:
 		return ""
+	}
+}
+
+func (i *IES) maxKeywordLineLength() int {
+	newLineLength := 2 // \r\n
+	switch i.Format {
+	case IESFormatLM_63_1986:
+		return 82 - newLineLength
+	case IESFormatLM_63_1991:
+		return 82 - newLineLength
+	case IESFormatLM_63_1995:
+		return 82 - newLineLength
+	case IESFormatLM_63_2002:
+		return 256 - newLineLength
+	default:
+		return 0
+	}
+}
+
+func (i *IES) maxDataLineLength() int {
+	newLineLength := 2 // \r\n
+	switch i.Format {
+	case IESFormatLM_63_1986:
+		return 132 - newLineLength
+	case IESFormatLM_63_1991:
+		return 132 - newLineLength
+	case IESFormatLM_63_1995:
+		return 132 - newLineLength
+	case IESFormatLM_63_2002:
+		return 256 - newLineLength
+	default:
+		return 0
 	}
 }
 
@@ -698,7 +780,7 @@ func (i *IES) checkKeywordBlock(keyword string) bool {
 }
 
 func (i *IES) fetchValidLineFromFile(scanner *bufio.Scanner) (string, error) {
-	lineLength := 256 // TODO: set according to chosen format
+	lineLength := i.maxDataLineLength()
 
 	if !scanner.Scan() {
 		if err := scanner.Err(); err != nil {
@@ -708,7 +790,7 @@ func (i *IES) fetchValidLineFromFile(scanner *bufio.Scanner) (string, error) {
 		}
 	}
 
-	if len(scanner.Text()) > lineLength {
+	if len(scanner.Text()) > lineLength && i.strictParsing {
 		return "", errors.New("line exceeds maximum allowed length: " + scanner.Text())
 	}
 

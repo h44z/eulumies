@@ -22,6 +22,7 @@ func main() {
 		fmt.Println("Error parsing ies:", err)
 	} else {
 		fmt.Println("Parsed ies:", ies.Keywords["LUMINAIRE"])
+		//ies.Upgrade()
 		err = ies.Export("test/out.ies")
 		if err != nil {
 			fmt.Println(err)
