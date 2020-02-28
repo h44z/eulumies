@@ -251,6 +251,181 @@ func NewIES(filepath string, strict bool) (*IES, error) {
 	return &ies, nil
 }
 
+// Export writes the IESNA LM-63 instance to a file.
+func (i *IES) Export(filepath string) error {
+	if ok, msg := i.Validate(true); !ok {
+		return errors.New(msg)
+	}
+
+	file, err := os.Create(filepath)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	lineLength := 256 // TODO: set according to standard
+
+	// Format
+	if _, err = file.WriteString(i.convertFormatToString() + "\r\n"); err != nil {
+		return err
+	}
+
+	// Keywords
+	for keyword, value := range i.Keywords {
+		var cleanKeywordLines []string
+		var splitValue = strings.Split(strings.Replace(value, "\r\n", "\n", -1), "\n")
+		for _, val := range splitValue {
+			val = strings.TrimSpace(val)
+			if len(val) > lineLength {
+				chunkSize := lineLength
+
+				for j := 0; j < len(val); j += chunkSize {
+					end := j + chunkSize
+
+					if end > len(val) {
+						end = len(val)
+					}
+
+					cleanKeywordLines = append(cleanKeywordLines, strings.TrimSpace(val[j:end]))
+				}
+			} else {
+
+				cleanKeywordLines = append(cleanKeywordLines, strings.TrimSpace(val))
+			}
+		}
+
+		if len(cleanKeywordLines) == 0 {
+			return fmt.Errorf("failed to split keyword %s into line", keyword)
+		}
+
+		// Write first line
+		if _, err = file.WriteString("[" + keyword + "] " + cleanKeywordLines[0] + "\r\n"); err != nil {
+			return err
+		}
+		if len(cleanKeywordLines) > 1 {
+			for l := 1; l < len(cleanKeywordLines); l++ {
+				if i.Format == IESFormatLM_63_2002 {
+					if _, err = file.WriteString("[MORE] " + cleanKeywordLines[l] + "\r\n"); err != nil {
+						return err
+					}
+				} else {
+					if _, err = file.WriteString(" " + cleanKeywordLines[l] + "\r\n"); err != nil {
+						return err
+					}
+				}
+			}
+		}
+	}
+
+	// Tilt Information
+	if _, err = file.WriteString("TILT=" + string(i.Tilt) + "\r\n"); err != nil {
+		return err
+	}
+
+	// Tilt Data
+	if i.Tilt == IESTiltInclude {
+		if _, err = file.WriteString(strconv.Itoa(i.TiltLampToLuminaireGeometry) + "\r\n"); err != nil {
+			return err
+		}
+		if _, err = file.WriteString(strconv.Itoa(i.TiltAnglesAndFactors) + "\r\n"); err != nil {
+			return err
+		}
+		angleLines := convertFloatSliceToStringSlice(lineLength, i.TiltAngles)
+		for _, line := range angleLines {
+			if _, err = file.WriteString(line + "\r\n"); err != nil {
+				return err
+			}
+		}
+		multiplierLines := convertFloatSliceToStringSlice(lineLength, i.TiltMultiplierFactors)
+		for _, line := range multiplierLines {
+			if _, err = file.WriteString(line + "\r\n"); err != nil {
+				return err
+			}
+		}
+	}
+
+	// Line 10
+	lines := convertValuesToStringSlice(lineLength, i.NumberLamps, i.LumensPerLamp, i.CandelaMultiplier,
+		i.NumberVerticalAngles, i.NumberHorizontalAngles, i.PhotometricType, i.UnitsType, i.LuminaireWidth,
+		i.LuminaireLength, i.LuminaireHeight)
+	for _, line := range lines {
+		if _, err = file.WriteString(line + "\r\n"); err != nil {
+			return err
+		}
+	}
+
+	// Line 10
+	lines = convertValuesToStringSlice(lineLength, i.BallastFactor, i.FutureUse, i.InputWatts)
+	for _, line := range lines {
+		if _, err = file.WriteString(line + "\r\n"); err != nil {
+			return err
+		}
+	}
+
+	// Vertival angles
+	lines = convertFloatSliceToStringSlice(lineLength, i.VerticalAngles)
+	for _, line := range lines {
+		if _, err = file.WriteString(line + "\r\n"); err != nil {
+			return err
+		}
+	}
+
+	// Horizontal angles
+	lines = convertFloatSliceToStringSlice(lineLength, i.HorizontalAngles)
+	for _, line := range lines {
+		if _, err = file.WriteString(line + "\r\n"); err != nil {
+			return err
+		}
+	}
+
+	// Candela values
+	for _, vertAngles := range i.CandelaValues {
+		lines = convertFloatSliceToStringSlice(lineLength, vertAngles)
+		for _, line := range lines {
+			if _, err = file.WriteString(line + "\r\n"); err != nil {
+				return err
+			}
+		}
+	}
+
+	if err = file.Sync(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// Validate the IESNA LM-63 Data structure
+func (i *IES) Validate(strict bool) (bool, string) {
+	if strict {
+		// TODO: length checks on all fields
+	}
+
+	if !i.ContainsRequiredKeywords() {
+		return false, "required keywords not present"
+	}
+
+	if i.NumberVerticalAngles != len(i.VerticalAngles) {
+		return false, "VerticalAngles length mismatch"
+	}
+
+	if i.NumberHorizontalAngles != len(i.HorizontalAngles) {
+		return false, "HorizontalAngles length mismatch"
+	}
+
+	if i.NumberHorizontalAngles != len(i.CandelaValues) {
+		return false, "CandelaValues horizontal length mismatch"
+	}
+
+	for _, c := range i.CandelaValues {
+		if i.NumberVerticalAngles != len(c) {
+			return false, "CandelaValues vertical length mismatch"
+		}
+	}
+
+	return true, ""
+}
+
 func (i *IES) parseFormatVersion(line string) error {
 	switch line {
 	case "IESNA91":
@@ -264,6 +439,21 @@ func (i *IES) parseFormatVersion(line string) error {
 	}
 
 	return nil
+}
+
+func (i *IES) convertFormatToString() string {
+	switch i.Format {
+	case IESFormatLM_63_1986:
+		return ""
+	case IESFormatLM_63_1991:
+		return "IESNA91"
+	case IESFormatLM_63_1995:
+		return "IESNA:LM-63-1995"
+	case IESFormatLM_63_2002:
+		return "IESNA:LM-63-2002"
+	default:
+		return ""
+	}
 }
 
 func (i *IES) isKeywordAllowed(keyword string) bool {
@@ -576,4 +766,42 @@ func getWordListFromInput(scanner *bufio.Scanner, size int, lastScan bool) ([]st
 	}
 
 	return list, nil
+}
+
+func convertFloatSliceToStringSlice(lineLength int, input []float64) []string {
+	var lines []string
+
+	currentLine := ""
+	sep := ""
+	for _, flt := range input {
+		fltStr := strconv.FormatFloat(flt, 'f', 2, 64)
+		if len(currentLine)+len(fltStr)+1 > lineLength {
+			lines = append(lines, currentLine)
+			currentLine = ""
+		}
+		currentLine += sep + fltStr
+		sep = " "
+	}
+	lines = append(lines, currentLine)
+
+	return lines
+}
+
+func convertValuesToStringSlice(lineLength int, input ...interface{}) []string {
+	var lines []string
+
+	currentLine := ""
+	sep := ""
+	for _, val := range input {
+		valStr := fmt.Sprint(val)
+		if len(currentLine)+len(valStr)+1 > lineLength {
+			lines = append(lines, currentLine)
+			currentLine = ""
+		}
+		currentLine += sep + valStr
+		sep = " "
+	}
+	lines = append(lines, currentLine)
+
+	return lines
 }
