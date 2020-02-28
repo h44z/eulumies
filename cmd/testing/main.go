@@ -6,7 +6,7 @@ import (
 )
 
 func main() {
-	eulumdat, err := eulumies.NewEulumdat("test/sample2.ldt", false)
+	eulumdat, err := eulumies.NewEulumdat("test/sample.ldt", false)
 	if err != nil {
 		fmt.Println("Error parsing ldt:", err)
 	} else {
@@ -24,6 +24,17 @@ func main() {
 		fmt.Println("Parsed ies:", ies.Keywords["LUMINAIRE"])
 		//ies.Upgrade()
 		err = ies.Export("test/out.ies")
+		if err != nil {
+			fmt.Println(err)
+		}
+	}
+
+	ies2, err := eulumies.ConvertEulumdatToIES(eulumdat)
+	if err != nil {
+		fmt.Println(err)
+	} else {
+		fmt.Println("Converted ies2:", ies2.Keywords["LUMINAIRE"])
+		err = ies2.Export("test/out2.ies")
 		if err != nil {
 			fmt.Println(err)
 		}
