@@ -1,17 +1,21 @@
 package eulumies
 
+import (
+	"bufio"
+	"fmt"
+	"io"
+	"math"
+	"strconv"
+	"strings"
+
+	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
+)
+
 // Reference: http://www.helios32.com/Eulumdat.htm
 // Reference: https://docs.agi32.com/PhotometricToolbox/Content/Open_Tool/eulumdat_file_format.htm
 
-import (
-	"bufio"
-	"errors"
-	"fmt"
-	"os"
-	"strconv"
-)
-
-// EULUMDAT data structure
+// Eulumdat data structure
 type Eulumdat struct {
 	/* 01 */ CompanyIdentification string // 78 char - Company identification/data bank/version/format identification max.
 	/* 02 */ TypeIndicator int // 1  int  - Type indicator I_typ (1 - point source with symmetry about the vertical axis; 2 - linear luminaire; 3 - point source with any other symmetry) [See Note 1]
@@ -71,94 +75,89 @@ type Eulumdat struct {
 }
 
 // NewEulumdat reads the given input file and parses it to the Eulumdat data structure.
-func NewEulumdat(filepath string, strict bool) (*Eulumdat, error) {
-	file, err := os.Open(filepath)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-
+func NewEulumdat(in io.Reader, strict bool) (Eulumdat, error) {
 	var eulumdat Eulumdat
-	scanner := bufio.NewScanner(file)
+	var err error
+	scanner := bufio.NewScanner(in)
 
 	// First load all Header fields, 1 to 26
 	if eulumdat.CompanyIdentification, err = validateStringFromLine(scanner, 78, strict); err != nil {
-		return nil, err
+		return Eulumdat{}, err
 	}
 	if eulumdat.TypeIndicator, err = validateIntFromLine(scanner); err != nil {
-		return nil, err
+		return Eulumdat{}, err
 	}
 	if eulumdat.SymmetryIndicator, err = validateIntFromLine(scanner); err != nil {
-		return nil, err
+		return Eulumdat{}, err
 	}
 	if eulumdat.NumberMcCPlanes, err = validateIntFromLine(scanner); err != nil {
-		return nil, err
+		return Eulumdat{}, err
 	}
 	if eulumdat.DistanceDcCPlanes, err = validateFloatFromLine(scanner); err != nil {
-		return nil, err
+		return Eulumdat{}, err
 	}
 	if eulumdat.NumberNgIntensitiesCPlane, err = validateIntFromLine(scanner); err != nil {
-		return nil, err
+		return Eulumdat{}, err
 	}
 	if eulumdat.DistanceDgCPlane, err = validateFloatFromLine(scanner); err != nil {
-		return nil, err
+		return Eulumdat{}, err
 	}
 	if eulumdat.MeasurementReportNumber, err = validateStringFromLine(scanner, 78, strict); err != nil {
-		return nil, err
+		return Eulumdat{}, err
 	}
 	if eulumdat.LuminaireName, err = validateStringFromLine(scanner, 78, strict); err != nil {
-		return nil, err
+		return Eulumdat{}, err
 	}
 	if eulumdat.LuminaireNumber, err = validateStringFromLine(scanner, 78, strict); err != nil {
-		return nil, err
+		return Eulumdat{}, err
 	}
 	if eulumdat.FileName, err = validateStringFromLine(scanner, 8, strict); err != nil {
-		return nil, err
+		return Eulumdat{}, err
 	}
 	if eulumdat.DateUser, err = validateStringFromLine(scanner, 78, strict); err != nil {
-		return nil, err
+		return Eulumdat{}, err
 	}
 	if eulumdat.LengthDiameter, err = validateFloatFromLine(scanner); err != nil {
-		return nil, err
+		return Eulumdat{}, err
 	}
 	if eulumdat.WidthLuminaire, err = validateFloatFromLine(scanner); err != nil {
-		return nil, err
+		return Eulumdat{}, err
 	}
 	if eulumdat.HeightLuminaire, err = validateFloatFromLine(scanner); err != nil {
-		return nil, err
+		return Eulumdat{}, err
 	}
 	if eulumdat.LengthDiameterLuminousArea, err = validateFloatFromLine(scanner); err != nil {
-		return nil, err
+		return Eulumdat{}, err
 	}
 	if eulumdat.WidthLuminousArea, err = validateFloatFromLine(scanner); err != nil {
-		return nil, err
+		return Eulumdat{}, err
 	}
 	if eulumdat.HeightLuminousAreaC0, err = validateFloatFromLine(scanner); err != nil {
-		return nil, err
+		return Eulumdat{}, err
 	}
 	if eulumdat.HeightLuminousAreaC90, err = validateFloatFromLine(scanner); err != nil {
-		return nil, err
+		return Eulumdat{}, err
 	}
 	if eulumdat.HeightLuminousAreaC180, err = validateFloatFromLine(scanner); err != nil {
-		return nil, err
+		return Eulumdat{}, err
 	}
 	if eulumdat.HeightLuminousAreaC270, err = validateFloatFromLine(scanner); err != nil {
-		return nil, err
+		return Eulumdat{}, err
 	}
 	if eulumdat.DownwardFluxFractionPhiu, err = validateFloatFromLine(scanner); err != nil {
-		return nil, err
+		return Eulumdat{}, err
 	}
 	if eulumdat.LightOutputRatioLuminaire, err = validateFloatFromLine(scanner); err != nil {
-		return nil, err
+		return Eulumdat{}, err
 	}
 	if eulumdat.IntensityConversionFactor, err = validateFloatFromLine(scanner); err != nil {
-		return nil, err
+		return Eulumdat{}, err
 	}
 	if eulumdat.MeasurementTiltLuminaire, err = validateFloatFromLine(scanner); err != nil {
-		return nil, err
+		return Eulumdat{}, err
 	}
 	if eulumdat.NumberStandardSetLamps, err = validateIntFromLine(scanner); err != nil {
-		return nil, err
+		return Eulumdat{}, err
 	}
 
 	// Now load measurement data 26a to 26f
@@ -170,29 +169,29 @@ func NewEulumdat(filepath string, strict bool) (*Eulumdat, error) {
 	eulumdat.BallastWatts = make([]float64, eulumdat.NumberStandardSetLamps)
 	for i := 0; i < eulumdat.NumberStandardSetLamps; i++ {
 		if eulumdat.NumberLamps[i], err = validateIntFromLine(scanner); err != nil {
-			return nil, err
+			return Eulumdat{}, err
 		}
 		if eulumdat.TypeLamps[i], err = validateStringFromLine(scanner, 24, strict); err != nil {
-			return nil, err
+			return Eulumdat{}, err
 		}
 		if eulumdat.TotalLuminousFluxLamps[i], err = validateFloatFromLine(scanner); err != nil {
-			return nil, err
+			return Eulumdat{}, err
 		}
 		if eulumdat.ColorTemperature[i], err = validateStringFromLine(scanner, 16, strict); err != nil {
-			return nil, err
+			return Eulumdat{}, err
 		}
 		if eulumdat.ColorRenderingIndexCRI[i], err = validateStringFromLine(scanner, 6, strict); err != nil {
-			return nil, err
+			return Eulumdat{}, err
 		}
 		if eulumdat.BallastWatts[i], err = validateFloatFromLine(scanner); err != nil {
-			return nil, err
+			return Eulumdat{}, err
 		}
 	}
 
 	// Now load the 10 ratios from field 27
 	for i := 0; i < 10; i++ {
 		if eulumdat.DirectRatios[i], err = validateFloatFromLine(scanner); err != nil {
-			return nil, err
+			return Eulumdat{}, err
 		}
 	}
 
@@ -200,13 +199,13 @@ func NewEulumdat(filepath string, strict bool) (*Eulumdat, error) {
 	eulumdat.AnglesC = make([]float64, eulumdat.NumberMcCPlanes)
 	for i := 0; i < eulumdat.NumberMcCPlanes; i++ {
 		if eulumdat.AnglesC[i], err = validateFloatFromLine(scanner); err != nil {
-			return nil, err
+			return Eulumdat{}, err
 		}
 	}
 	eulumdat.AnglesG = make([]float64, eulumdat.NumberNgIntensitiesCPlane)
 	for i := 0; i < eulumdat.NumberNgIntensitiesCPlane; i++ {
 		if eulumdat.AnglesG[i], err = validateFloatFromLine(scanner); err != nil {
-			return nil, err
+			return Eulumdat{}, err
 		}
 	}
 
@@ -217,176 +216,182 @@ func NewEulumdat(filepath string, strict bool) (*Eulumdat, error) {
 	for i := 0; i < dataLength; i++ {
 		// All luminous intensities
 		if eulumdat.LuminousIntensityDistributionRaw[i], err = validateFloatFromLine(scanner); err != nil {
-			return nil, err
+			return Eulumdat{}, err
 		}
 	}
 
 	// Split luminous intensities into planes
 	// Details can be found in QLumEdit Source (eulumdat.cpp, line 234)
 	if err = eulumdat.CalcLuminousIntensityDistributionFromRaw(); err != nil {
-		return nil, err
+		return Eulumdat{}, err
 	}
 
 	if err := scanner.Err(); err != nil {
-		return nil, err
+		return Eulumdat{}, err
 	}
 
-	return &eulumdat, nil
+	return eulumdat, nil
 }
 
 // CopyEulumdat creates a deep copy of the given Eulumdat instance.
-func CopyEulumdat(source *Eulumdat) (*Eulumdat, error) {
-	copyObject := *source
+func CopyEulumdat(source Eulumdat) (Eulumdat, error) {
+	copyObject := source
 
 	// Deep copy reference fields
+	copyObject.NumberLamps = make([]int, len(source.NumberLamps))
 	copy(copyObject.NumberLamps, source.NumberLamps)
+	copyObject.TypeLamps = make([]string, len(source.TypeLamps))
 	copy(copyObject.TypeLamps, source.TypeLamps)
+	copyObject.TotalLuminousFluxLamps = make([]float64, len(source.TotalLuminousFluxLamps))
 	copy(copyObject.TotalLuminousFluxLamps, source.TotalLuminousFluxLamps)
+	copyObject.ColorTemperature = make([]string, len(source.ColorTemperature))
 	copy(copyObject.ColorTemperature, source.ColorTemperature)
+	copyObject.ColorRenderingIndexCRI = make([]string, len(source.ColorRenderingIndexCRI))
 	copy(copyObject.ColorRenderingIndexCRI, source.ColorRenderingIndexCRI)
+	copyObject.BallastWatts = make([]float64, len(source.BallastWatts))
 	copy(copyObject.BallastWatts, source.BallastWatts)
 
+	copyObject.AnglesC = make([]float64, len(source.AnglesC))
 	copy(copyObject.AnglesC, source.AnglesC)
+	copyObject.AnglesG = make([]float64, len(source.AnglesG))
 	copy(copyObject.AnglesG, source.AnglesG)
+	copyObject.LuminousIntensityDistributionRaw = make([]float64, len(source.LuminousIntensityDistributionRaw))
 	copy(copyObject.LuminousIntensityDistributionRaw, source.LuminousIntensityDistributionRaw)
+	copyObject.LuminousIntensityDistribution = make([][]float64, len(source.LuminousIntensityDistribution))
 	copy(copyObject.LuminousIntensityDistribution, source.LuminousIntensityDistribution)
 	for i := range source.LuminousIntensityDistribution {
+		copyObject.LuminousIntensityDistribution[i] = make([]float64, len(source.LuminousIntensityDistribution[i]))
 		copy(copyObject.LuminousIntensityDistribution[i], source.LuminousIntensityDistribution[i])
 	}
 
-	return &copyObject, nil
+	return copyObject, nil
 }
 
 // Export writes the Eulumdat instance to a file.
-func (e *Eulumdat) Export(filepath string) error {
+func (e Eulumdat) Export(out io.StringWriter) error {
 	if ok, msg := e.Validate(false); !ok {
 		return errors.New(msg)
 	}
 
-	file, err := os.Create(filepath)
-	if err != nil {
+	var err error
+	if _, err = out.WriteString(e.CompanyIdentification + "\r\n"); err != nil {
 		return err
 	}
-	defer file.Close()
-
-	if _, err = file.WriteString(e.CompanyIdentification + "\r\n"); err != nil {
+	if _, err = out.WriteString(strconv.Itoa(e.TypeIndicator) + "\r\n"); err != nil {
 		return err
 	}
-	if _, err = file.WriteString(strconv.Itoa(e.TypeIndicator) + "\r\n"); err != nil {
+	if _, err = out.WriteString(strconv.Itoa(e.SymmetryIndicator) + "\r\n"); err != nil {
 		return err
 	}
-	if _, err = file.WriteString(strconv.Itoa(e.SymmetryIndicator) + "\r\n"); err != nil {
+	if _, err = out.WriteString(strconv.Itoa(e.NumberMcCPlanes) + "\r\n"); err != nil {
 		return err
 	}
-	if _, err = file.WriteString(strconv.Itoa(e.NumberMcCPlanes) + "\r\n"); err != nil {
+	if _, err = out.WriteString(fmt.Sprintf("%f", e.DistanceDcCPlanes) + "\r\n"); err != nil {
 		return err
 	}
-	if _, err = file.WriteString(fmt.Sprintf("%f", e.DistanceDcCPlanes) + "\r\n"); err != nil {
+	if _, err = out.WriteString(strconv.Itoa(e.NumberNgIntensitiesCPlane) + "\r\n"); err != nil {
 		return err
 	}
-	if _, err = file.WriteString(strconv.Itoa(e.NumberNgIntensitiesCPlane) + "\r\n"); err != nil {
+	if _, err = out.WriteString(fmt.Sprintf("%f", e.DistanceDgCPlane) + "\r\n"); err != nil {
 		return err
 	}
-	if _, err = file.WriteString(fmt.Sprintf("%f", e.DistanceDgCPlane) + "\r\n"); err != nil {
+	if _, err = out.WriteString(e.MeasurementReportNumber + "\r\n"); err != nil {
 		return err
 	}
-	if _, err = file.WriteString(e.MeasurementReportNumber + "\r\n"); err != nil {
+	if _, err = out.WriteString(e.LuminaireName + "\r\n"); err != nil {
 		return err
 	}
-	if _, err = file.WriteString(e.LuminaireName + "\r\n"); err != nil {
+	if _, err = out.WriteString(e.LuminaireNumber + "\r\n"); err != nil {
 		return err
 	}
-	if _, err = file.WriteString(e.LuminaireNumber + "\r\n"); err != nil {
+	if _, err = out.WriteString(e.FileName + "\r\n"); err != nil {
 		return err
 	}
-	if _, err = file.WriteString(e.FileName + "\r\n"); err != nil {
+	if _, err = out.WriteString(e.DateUser + "\r\n"); err != nil {
 		return err
 	}
-	if _, err = file.WriteString(e.DateUser + "\r\n"); err != nil {
+	if _, err = out.WriteString(fmt.Sprintf("%f", e.LengthDiameter) + "\r\n"); err != nil {
 		return err
 	}
-	if _, err = file.WriteString(fmt.Sprintf("%f", e.LengthDiameter) + "\r\n"); err != nil {
+	if _, err = out.WriteString(fmt.Sprintf("%f", e.WidthLuminaire) + "\r\n"); err != nil {
 		return err
 	}
-	if _, err = file.WriteString(fmt.Sprintf("%f", e.WidthLuminaire) + "\r\n"); err != nil {
+	if _, err = out.WriteString(fmt.Sprintf("%f", e.HeightLuminaire) + "\r\n"); err != nil {
 		return err
 	}
-	if _, err = file.WriteString(fmt.Sprintf("%f", e.HeightLuminaire) + "\r\n"); err != nil {
+	if _, err = out.WriteString(fmt.Sprintf("%f", e.LengthDiameterLuminousArea) + "\r\n"); err != nil {
 		return err
 	}
-	if _, err = file.WriteString(fmt.Sprintf("%f", e.LengthDiameterLuminousArea) + "\r\n"); err != nil {
+	if _, err = out.WriteString(fmt.Sprintf("%f", e.WidthLuminousArea) + "\r\n"); err != nil {
 		return err
 	}
-	if _, err = file.WriteString(fmt.Sprintf("%f", e.WidthLuminousArea) + "\r\n"); err != nil {
+	if _, err = out.WriteString(fmt.Sprintf("%f", e.HeightLuminousAreaC0) + "\r\n"); err != nil {
 		return err
 	}
-	if _, err = file.WriteString(fmt.Sprintf("%f", e.HeightLuminousAreaC0) + "\r\n"); err != nil {
+	if _, err = out.WriteString(fmt.Sprintf("%f", e.HeightLuminousAreaC90) + "\r\n"); err != nil {
 		return err
 	}
-	if _, err = file.WriteString(fmt.Sprintf("%f", e.HeightLuminousAreaC90) + "\r\n"); err != nil {
+	if _, err = out.WriteString(fmt.Sprintf("%f", e.HeightLuminousAreaC180) + "\r\n"); err != nil {
 		return err
 	}
-	if _, err = file.WriteString(fmt.Sprintf("%f", e.HeightLuminousAreaC180) + "\r\n"); err != nil {
+	if _, err = out.WriteString(fmt.Sprintf("%f", e.HeightLuminousAreaC270) + "\r\n"); err != nil {
 		return err
 	}
-	if _, err = file.WriteString(fmt.Sprintf("%f", e.HeightLuminousAreaC270) + "\r\n"); err != nil {
+	if _, err = out.WriteString(fmt.Sprintf("%f", e.DownwardFluxFractionPhiu) + "\r\n"); err != nil {
 		return err
 	}
-	if _, err = file.WriteString(fmt.Sprintf("%f", e.DownwardFluxFractionPhiu) + "\r\n"); err != nil {
+	if _, err = out.WriteString(fmt.Sprintf("%f", e.LightOutputRatioLuminaire) + "\r\n"); err != nil {
 		return err
 	}
-	if _, err = file.WriteString(fmt.Sprintf("%f", e.LightOutputRatioLuminaire) + "\r\n"); err != nil {
+	if _, err = out.WriteString(fmt.Sprintf("%f", e.IntensityConversionFactor) + "\r\n"); err != nil {
 		return err
 	}
-	if _, err = file.WriteString(fmt.Sprintf("%f", e.IntensityConversionFactor) + "\r\n"); err != nil {
+	if _, err = out.WriteString(fmt.Sprintf("%f", e.MeasurementTiltLuminaire) + "\r\n"); err != nil {
 		return err
 	}
-	if _, err = file.WriteString(fmt.Sprintf("%f", e.MeasurementTiltLuminaire) + "\r\n"); err != nil {
-		return err
-	}
-	if _, err = file.WriteString(strconv.Itoa(e.NumberStandardSetLamps) + "\r\n"); err != nil {
+	if _, err = out.WriteString(strconv.Itoa(e.NumberStandardSetLamps) + "\r\n"); err != nil {
 		return err
 	}
 
 	// 26a - 26f
 	for i := 0; i < e.NumberStandardSetLamps; i++ {
-		if _, err = file.WriteString(strconv.Itoa(e.NumberLamps[i]) + "\r\n"); err != nil {
+		if _, err = out.WriteString(strconv.Itoa(e.NumberLamps[i]) + "\r\n"); err != nil {
 			return err
 		}
-		if _, err = file.WriteString(e.TypeLamps[i] + "\r\n"); err != nil {
+		if _, err = out.WriteString(e.TypeLamps[i] + "\r\n"); err != nil {
 			return err
 		}
-		if _, err = file.WriteString(fmt.Sprintf("%f", e.TotalLuminousFluxLamps[i]) + "\r\n"); err != nil {
+		if _, err = out.WriteString(fmt.Sprintf("%f", e.TotalLuminousFluxLamps[i]) + "\r\n"); err != nil {
 			return err
 		}
-		if _, err = file.WriteString(e.ColorTemperature[i] + "\r\n"); err != nil {
+		if _, err = out.WriteString(e.ColorTemperature[i] + "\r\n"); err != nil {
 			return err
 		}
-		if _, err = file.WriteString(e.ColorRenderingIndexCRI[i] + "\r\n"); err != nil {
+		if _, err = out.WriteString(e.ColorRenderingIndexCRI[i] + "\r\n"); err != nil {
 			return err
 		}
-		if _, err = file.WriteString(fmt.Sprintf("%f", e.BallastWatts[i]) + "\r\n"); err != nil {
+		if _, err = out.WriteString(fmt.Sprintf("%f", e.BallastWatts[i]) + "\r\n"); err != nil {
 			return err
 		}
 	}
 
 	// 27
 	for i := 0; i < 10; i++ {
-		if _, err = file.WriteString(fmt.Sprintf("%f", e.DirectRatios[i]) + "\r\n"); err != nil {
+		if _, err = out.WriteString(fmt.Sprintf("%f", e.DirectRatios[i]) + "\r\n"); err != nil {
 			return err
 		}
 	}
 
 	// 28
 	for i := 0; i < e.NumberMcCPlanes; i++ {
-		if _, err = file.WriteString(fmt.Sprintf("%f", e.AnglesC[i]) + "\r\n"); err != nil {
+		if _, err = out.WriteString(fmt.Sprintf("%f", e.AnglesC[i]) + "\r\n"); err != nil {
 			return err
 		}
 	}
 
 	// 29
 	for i := 0; i < e.NumberNgIntensitiesCPlane; i++ {
-		if _, err = file.WriteString(fmt.Sprintf("%f", e.AnglesG[i]) + "\r\n"); err != nil {
+		if _, err = out.WriteString(fmt.Sprintf("%f", e.AnglesG[i]) + "\r\n"); err != nil {
 			return err
 		}
 	}
@@ -395,13 +400,9 @@ func (e *Eulumdat) Export(filepath string) error {
 	e.calcMc1andMc2()
 	dataLength := (e.mc2 - e.mc1 + 1) * e.NumberNgIntensitiesCPlane
 	for i := 0; i < dataLength; i++ {
-		if _, err = file.WriteString(fmt.Sprintf("%f", e.LuminousIntensityDistributionRaw[i]) + "\r\n"); err != nil {
+		if _, err = out.WriteString(fmt.Sprintf("%f", e.LuminousIntensityDistributionRaw[i]) + "\r\n"); err != nil {
 			return err
 		}
-	}
-
-	if err = file.Sync(); err != nil {
-		return err
 	}
 
 	return nil
@@ -470,7 +471,7 @@ func (e *Eulumdat) CalcLuminousIntensityDistributionFromRaw() error {
 }
 
 // Validate the EULUMDAT Data structure
-func (e *Eulumdat) Validate(strict bool) (bool, string) {
+func (e Eulumdat) Validate(strict bool) (bool, string) {
 	if strict {
 		// TODO: length checks on all fields
 	}
@@ -507,4 +508,135 @@ func (e *Eulumdat) Validate(strict bool) (bool, string) {
 	}
 
 	return true, ""
+}
+
+// GetMaximumLuminousIntensity returns the maximum luminous intensity
+func (e Eulumdat) GetMaximumLuminousIntensity() float64 {
+	max := 0.0
+	for _, intensity := range e.LuminousIntensityDistributionRaw {
+		max = math.Max(max, intensity)
+	}
+
+	return max
+}
+
+// GetFwhm returns the full width at half maximum angle.
+func (e Eulumdat) GetFwhm() float64 {
+	maxI := e.GetMaximumLuminousIntensity()
+	halfMaxI := maxI / 2
+	angle := -1.0
+
+	// only makes sense if luminaire field is symmetric
+	if e.SymmetryIndicator == 1 || e.SymmetryIndicator == 4 {
+		// find closest angle to halfMaxI
+		minDiff := math.MaxFloat64 // init as large as possible as we want to find the minimum
+		for _, planeIntensities := range e.LuminousIntensityDistribution {
+			for planeIndex := 0; planeIndex < e.NumberNgIntensitiesCPlane; planeIndex++ {
+				diff := math.Abs(planeIntensities[planeIndex] - halfMaxI)
+				if diff < minDiff && e.AnglesG[planeIndex] <= 90 { // <= 90, assume that ivmax is located between 0 and 90 °
+					minDiff = diff
+					angle = e.AnglesG[planeIndex]
+				}
+			}
+		}
+	}
+
+	if angle < 0 {
+		return -1
+	}
+
+	return angle * 2
+}
+
+// GetFwtm returns the full width at 1/10 maximum angle.
+func (e Eulumdat) GetFwtm() float64 {
+	maxI := e.GetMaximumLuminousIntensity()
+	halfMaxI := maxI / 10
+	angle := -1.0
+
+	// only makes sense if luminaire field is symmetric
+	if e.SymmetryIndicator == 1 || e.SymmetryIndicator == 4 {
+		// find closest angle to halfMaxI
+		minDiff := math.MaxFloat64 // init as large as possible as we want to find the minimum
+		for _, planeIntensities := range e.LuminousIntensityDistribution {
+			for planeIndex := 0; planeIndex < e.NumberNgIntensitiesCPlane; planeIndex++ {
+				diff := math.Abs(planeIntensities[planeIndex] - halfMaxI)
+				if diff < minDiff && e.AnglesG[planeIndex] <= 90 { // <= 90, assume that ivmax is located between 0 and 90 °
+					minDiff = diff
+					angle = e.AnglesG[planeIndex]
+				}
+			}
+		}
+	}
+
+	if angle < 0 {
+		return -1
+	}
+
+	return angle * 2
+}
+
+func validateStringFromLine(scanner *bufio.Scanner, maxLength int, strict bool) (string, error) {
+	if !scanner.Scan() {
+		if err := scanner.Err(); err != nil {
+			return "", err
+		} else {
+			return "", errors.New("unexpected EOF")
+		}
+	}
+	cleanLine := strings.TrimSpace(scanner.Text())
+	if len(cleanLine) > maxLength && strict {
+		return "", errors.New("line exceeds maximum allowed length: " + cleanLine)
+	} else if len(cleanLine) > maxLength && !strict {
+		logrus.Tracef("[EULUM] line exceeds maximum allowed length: %d > %d, %s", len(cleanLine), maxLength, cleanLine)
+	}
+	return cleanLine, nil
+}
+
+func validateIntFromLine(scanner *bufio.Scanner) (int, error) {
+	if !scanner.Scan() {
+		if err := scanner.Err(); err != nil {
+			return -1, err
+		} else {
+			return -1, errors.New("unexpected EOF")
+		}
+	}
+
+	cleanLine := strings.TrimSpace(scanner.Text())
+	// also replace spaces and underscores
+	cleanLine = strings.ReplaceAll(cleanLine, " ", "")
+	cleanLine = strings.ReplaceAll(cleanLine, "_", "")
+
+	if len(cleanLine) == 0 {
+		return -1, errors.New("line contains no integer")
+	}
+
+	value, err := strconv.Atoi(cleanLine)
+
+	return value, err
+}
+
+func validateFloatFromLine(scanner *bufio.Scanner) (float64, error) {
+	if !scanner.Scan() {
+		if err := scanner.Err(); err != nil {
+			return -1, err
+		} else {
+			return -1, errors.New("unexpected EOF")
+		}
+	}
+
+	cleanLine := strings.TrimSpace(scanner.Text())
+	// replace all commas if present with dots
+	cleanLine = strings.ReplaceAll(cleanLine, ",", ".")
+	// also replace spaces and underscores
+	cleanLine = strings.ReplaceAll(cleanLine, " ", "")
+	cleanLine = strings.ReplaceAll(cleanLine, "_", "")
+
+	if len(cleanLine) == 0 {
+		return -1, errors.New("line contains no float")
+	}
+
+	value, err := strconv.ParseFloat(cleanLine, 64)
+
+	return value, err
 }
