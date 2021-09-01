@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/pkg/errors"
-	"github.com/sirupsen/logrus"
 )
 
 // Reference: http://www.helios32.com/Eulumdat.htm
@@ -72,6 +72,17 @@ type Eulumdat struct {
 	mc1 int
 	mc2 int
 	mc  int
+}
+
+// EulumdatAssembly represents one data-set for rows 26.a-f
+type EulumdatAssembly struct {
+	Current             float64 // either the current or -1 if the default currents of the modules have been used
+	NumberOfLamps       int
+	TypeOfLamps         string
+	TotalLuminousFlux   float64
+	Power               float64
+	ColorTemperature    string
+	ColorRenderingIndex string
 }
 
 // NewEulumdat reads the given input file and parses it to the Eulumdat data structure.
@@ -456,7 +467,7 @@ func (e *Eulumdat) calcMc() {
 func (e *Eulumdat) CalcLuminousIntensityDistributionFromRaw() error {
 	e.calcMc()
 	e.LuminousIntensityDistribution = make([][]float64, e.mc)
-	for i := 0; i < e.mc; i++ { // C-Planes
+	for i := 0; i < e.mc; i++ { // Mc is the number C-Planes
 		start := i * e.NumberNgIntensitiesCPlane
 		end := start + e.NumberNgIntensitiesCPlane
 
@@ -510,8 +521,19 @@ func (e Eulumdat) Validate(strict bool) (bool, string) {
 	return true, ""
 }
 
-// GetMaximumLuminousIntensity returns the maximum luminous intensity
-func (e Eulumdat) GetMaximumLuminousIntensity() float64 {
+// GetMaximumLuminousIntensity returns the maximum luminous intensity for the given C-Plane
+func (e Eulumdat) GetMaximumLuminousIntensity(planeIndex int) float64 {
+	max := 0.0
+	planeIntensities := e.LuminousIntensityDistribution[planeIndex]
+	for _, intensity := range planeIntensities {
+		max = math.Max(max, intensity)
+	}
+
+	return max
+}
+
+// GetOverallMaximumLuminousIntensity returns the maximum luminous intensity of all C-Planes
+func (e Eulumdat) GetOverallMaximumLuminousIntensity() float64 {
 	max := 0.0
 	for _, intensity := range e.LuminousIntensityDistributionRaw {
 		max = math.Max(max, intensity)
@@ -521,23 +543,29 @@ func (e Eulumdat) GetMaximumLuminousIntensity() float64 {
 }
 
 // GetFwhm returns the full width at half maximum angle.
-func (e Eulumdat) GetFwhm() float64 {
-	maxI := e.GetMaximumLuminousIntensity()
-	halfMaxI := maxI / 2
-	angle := -1.0
+func (e Eulumdat) GetFwhm(planeIndex int) float64 {
+	if planeIndex == -1 || planeIndex >= e.mc {
+		return -1 // plane does not exist
+	}
 
 	// only makes sense if luminaire field is symmetric
-	if e.SymmetryIndicator == 1 || e.SymmetryIndicator == 4 {
-		// find closest angle to halfMaxI
-		minDiff := math.MaxFloat64 // init as large as possible as we want to find the minimum
-		for _, planeIntensities := range e.LuminousIntensityDistribution {
-			for planeIndex := 0; planeIndex < e.NumberNgIntensitiesCPlane; planeIndex++ {
-				diff := math.Abs(planeIntensities[planeIndex] - halfMaxI)
-				if diff < minDiff && e.AnglesG[planeIndex] <= 90 { // <= 90, assume that ivmax is located between 0 and 90 °
-					minDiff = diff
-					angle = e.AnglesG[planeIndex]
-				}
-			}
+	if e.SymmetryIndicator != 1 && e.SymmetryIndicator != 4 {
+		return -1
+	}
+
+	maxIntensity := e.GetMaximumLuminousIntensity(planeIndex)
+	targetIntensity := maxIntensity / 2
+
+	// find the closest angle to halfMaxI
+	minDiff := math.MaxFloat64 // init as large as possible as we want to find the minimum
+
+	angle := -1.0
+	planeIntensities := e.LuminousIntensityDistribution[planeIndex]
+	for intensityIndex, intensity := range planeIntensities {
+		diff := math.Abs(intensity - targetIntensity)
+		if diff < minDiff && e.AnglesG[intensityIndex] <= 90 { // <= 90, assume that ivmax is located between 0 and 90 °
+			minDiff = diff
+			angle = e.AnglesG[intensityIndex]
 		}
 	}
 
@@ -549,23 +577,29 @@ func (e Eulumdat) GetFwhm() float64 {
 }
 
 // GetFwtm returns the full width at 1/10 maximum angle.
-func (e Eulumdat) GetFwtm() float64 {
-	maxI := e.GetMaximumLuminousIntensity()
-	halfMaxI := maxI / 10
-	angle := -1.0
+func (e Eulumdat) GetFwtm(planeIndex int) float64 {
+	if planeIndex == -1 || planeIndex >= e.mc {
+		return -1 // plane does not exist
+	}
 
 	// only makes sense if luminaire field is symmetric
-	if e.SymmetryIndicator == 1 || e.SymmetryIndicator == 4 {
-		// find closest angle to halfMaxI
-		minDiff := math.MaxFloat64 // init as large as possible as we want to find the minimum
-		for _, planeIntensities := range e.LuminousIntensityDistribution {
-			for planeIndex := 0; planeIndex < e.NumberNgIntensitiesCPlane; planeIndex++ {
-				diff := math.Abs(planeIntensities[planeIndex] - halfMaxI)
-				if diff < minDiff && e.AnglesG[planeIndex] <= 90 { // <= 90, assume that ivmax is located between 0 and 90 °
-					minDiff = diff
-					angle = e.AnglesG[planeIndex]
-				}
-			}
+	if e.SymmetryIndicator != 1 && e.SymmetryIndicator != 4 {
+		return -1
+	}
+
+	maxIntensity := e.GetMaximumLuminousIntensity(planeIndex)
+	targetIntensity := maxIntensity / 10
+
+	// find the closest angle to halfMaxI
+	minDiff := math.MaxFloat64 // init as large as possible as we want to find the minimum
+
+	angle := -1.0
+	planeIntensities := e.LuminousIntensityDistribution[planeIndex]
+	for intensityIndex, intensity := range planeIntensities {
+		diff := math.Abs(intensity - targetIntensity)
+		if diff < minDiff && e.AnglesG[intensityIndex] <= 90 { // <= 90, assume that ivmax is located between 0 and 90 °
+			minDiff = diff
+			angle = e.AnglesG[intensityIndex]
 		}
 	}
 
@@ -574,6 +608,18 @@ func (e Eulumdat) GetFwtm() float64 {
 	}
 
 	return angle * 2
+}
+
+// GetCPlaneIndex returns the internal index of the C-Plane for the given angle.
+// If no such plane was found, -1 is returned.
+func (e Eulumdat) GetCPlaneIndex(angle float64) int {
+	for i, planeAngle := range e.AnglesC {
+		if planeAngle == angle {
+			return i
+		}
+	}
+
+	return -1
 }
 
 func validateStringFromLine(scanner *bufio.Scanner, maxLength int, strict bool) (string, error) {
@@ -588,7 +634,7 @@ func validateStringFromLine(scanner *bufio.Scanner, maxLength int, strict bool) 
 	if len(cleanLine) > maxLength && strict {
 		return "", errors.New("line exceeds maximum allowed length: " + cleanLine)
 	} else if len(cleanLine) > maxLength && !strict {
-		logrus.Tracef("[EULUM] line exceeds maximum allowed length: %d > %d, %s", len(cleanLine), maxLength, cleanLine)
+		//logrus.Tracef("[EULUM] line exceeds maximum allowed length: %d > %d, %s", len(cleanLine), maxLength, cleanLine)
 	}
 	return cleanLine, nil
 }
@@ -639,4 +685,44 @@ func validateFloatFromLine(scanner *bufio.Scanner) (float64, error) {
 	value, err := strconv.ParseFloat(cleanLine, 64)
 
 	return value, err
+}
+
+// CalculateEulumdatAssemblies returns an ordered list of assemblies, the assembly with the highest current is the first element.
+func CalculateEulumdatAssemblies(luminaireData LuminaireData, luminousPoints float64) ([]EulumdatAssembly, error) {
+	assemblies := make([]EulumdatAssembly, len(luminaireData.PossibleCurrents))
+	for i, current := range luminaireData.PossibleCurrents {
+		assemblies[i] = EulumdatAssembly{
+			Current:     float64(current),
+			TypeOfLamps: "LED",
+		}
+		assemblies[i].ColorTemperature = mapColorTempsToString(luminaireData.GetUniqueColorTemperatures(current))
+		assemblies[i].ColorRenderingIndex = fmt.Sprintf("%0.0f", luminaireData.GetMinimalCri(current))
+		assemblies[i].Power = luminaireData.GetRealTotalPower(current) / luminousPoints
+		assemblies[i].TotalLuminousFlux = luminaireData.GetTotalLuminousFlux(current) / luminousPoints
+		assemblies[i].NumberOfLamps = luminaireData.GetNumberOfLamps(luminousPoints)
+	}
+
+	sort.Slice(assemblies, func(i, j int) bool {
+		return assemblies[i].Current > assemblies[j].Current
+	})
+
+	return assemblies, nil
+}
+
+func ApplyEulumdatAssemblies(assemblies []EulumdatAssembly, eulumdat *Eulumdat) {
+	eulumdat.NumberLamps = make([]int, len(assemblies))
+	eulumdat.TypeLamps = make([]string, len(assemblies))
+	eulumdat.ColorTemperature = make([]string, len(assemblies))
+	eulumdat.BallastWatts = make([]float64, len(assemblies))
+	eulumdat.TotalLuminousFluxLamps = make([]float64, len(assemblies))
+	eulumdat.ColorRenderingIndexCRI = make([]string, len(assemblies))
+	eulumdat.NumberStandardSetLamps = len(assemblies)
+	for i := range assemblies {
+		eulumdat.NumberLamps[i] = assemblies[i].NumberOfLamps
+		eulumdat.TypeLamps[i] = assemblies[i].TypeOfLamps
+		eulumdat.ColorTemperature[i] = assemblies[i].ColorTemperature
+		eulumdat.BallastWatts[i] = assemblies[i].Power
+		eulumdat.TotalLuminousFluxLamps[i] = assemblies[i].TotalLuminousFlux
+		eulumdat.ColorRenderingIndexCRI[i] = assemblies[i].ColorRenderingIndex
+	}
 }
